@@ -1,0 +1,93 @@
+pipeline {
+  agent {
+    kubernetes {
+      yaml '''
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: docker
+        spec:
+          containers:
+          - name: docker
+            image: docker
+            args: ["sleep", "10000"]
+            volumeMounts:
+             - mountPath: /var/run/docker.sock
+               name: docker-socket
+          restartPolicy: Never
+          volumes:
+          - name: docker-socket
+            hostPath:
+              path: /var/run/docker.sock    
+        '''
+    }
+  }
+  environment{
+        Docker_Cred=credentials('docker_id')
+  }
+  stages {
+        stage('Go to repo'){
+            steps{
+                container('docker') {
+                    script{
+                        echo "take code from github"
+                        sh  '''
+                        apk add -U git
+                        rm -rf Sentiment-Analyser/
+                        git clone $Branch https://github.com/Chirag0401/sentiment-app-final.git
+                        '''
+                        echo "Branch copied"
+                        
+                    }
+                    
+                }
+                
+            }
+        }
+        stage('Docker Version'){
+            steps{
+                container('docker') {
+                    sh 'docker --version'
+                    
+                }
+            }
+        }
+        stage('Login to DockerHub'){
+            steps{
+                container('docker') {
+                    script{
+                        echo "Login to DockerHub"
+                        sh  ''' 
+                        echo $Docker_Cred_PSW | docker login -u $Docker_Cred_USR --password-stdin
+                        '''
+                        
+                    }
+                    
+                }
+                
+            }
+        }
+        stage('Build Image and push to dockerhub'){
+            steps{
+                container('docker') {
+                    script{
+                        echo "Test code from github"
+                        sh  '''
+                        pwd
+                        ls
+                        cd sentiment-app-final/sa-frontend/
+                        docker build -t sa-frontend .
+                        docker tag sa-frontend chirag0401/sa-frontend:${BUILD_NUMBER}
+                        docker push chirag0401/sa-frontend:${BUILD_NUMBER}
+                        '''
+                        
+                    }
+                    
+                }
+                
+            }
+            
+        }
+      
+    }
+}
